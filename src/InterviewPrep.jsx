@@ -135,7 +135,7 @@ export default function InterviewPrep() {
   useEffect(() => {
     const fetchProgress = async () => {
       try {
-        const res = await fetch("http://localhost:8000/api/progress");
+        const res = await fetch("https://zoo-command-center-api.onrender.com/api/progress");
         if (res.ok) {
           const data = await res.json();
           setStats({ streak: data.streak });
@@ -162,7 +162,7 @@ export default function InterviewPrep() {
     if (!topic.trim()) return;
     setIsLoading(true); setFlashcards([]); 
     try {
-      const res = await fetch("http://localhost:8000/api/flashcards", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ topic }) });
+      const res = await fetch("https://zoo-command-center-api.onrender.com/api/flashcards", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ topic }) });
       const data = await res.json();
       if (res.ok) { setFlashcards(JSON.parse(data.response).cards || []); } 
       else { alert("Server Error: " + data.detail); }
@@ -249,7 +249,7 @@ export default function InterviewPrep() {
                   const terminal = document.getElementById("terminal-output");
                   terminal.innerText = "Compiling and running on secure server...\n";
                   try {
-                    const res = await fetch("http://localhost:8000/api/execute", {
+                    const res = await fetch("https://zoo-command-center-api.onrender.com/api/execute", {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({ language: language, code: code, problem_id: activeProblem.id }),
@@ -259,7 +259,7 @@ export default function InterviewPrep() {
 
                     if (data.output && data.output.includes("[PASS]")) {
                       try {
-                        const updateRes = await fetch("http://localhost:8000/api/progress/solve", { method: "POST" });
+                        const updateRes = await fetch("https://zoo-command-center-api.onrender.com/api/progress/solve", { method: "POST" });
                         if (updateRes.ok) {
                           const updatedData = await updateRes.json();
                           setStats(prev => ({ ...prev, streak: updatedData.streak }));
@@ -407,7 +407,7 @@ export default function InterviewPrep() {
                 onClick={async () => {
                   setIsSqlRunning(true); setSqlError(""); setSqlResults(null);
                   try {
-                    const res = await fetch("http://localhost:8000/api/sql", {
+                    const res = await fetch("https://zoo-command-center-api.onrender.com/api/sql", {
                       method: "POST", headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({ query: sqlCode })
                     });

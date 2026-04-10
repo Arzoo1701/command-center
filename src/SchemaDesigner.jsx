@@ -367,7 +367,7 @@ export default function DataSchemaDesigner() {
     setAiResponse("AI is architecting...");
     
     try {
-      const res = await fetch("http://localhost:8000/api/schema", {
+      const res = await fetch("https://zoo-command-center-api.onrender.com/api/schema", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: finalPrompt }),

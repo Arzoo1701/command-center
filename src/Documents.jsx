@@ -25,7 +25,7 @@ export default function Documents({ knowledgeBase = [], setKnowledgeBase }) {
         formData.append("file", file)
 
         try {
-          const response = await fetch("http://localhost:8000/api/upload", {
+          const response = await fetch("https://zoo-command-center-api.onrender.com/api/upload", {
             method: "POST",
             body: formData,
           })
@@ -60,7 +60,7 @@ export default function Documents({ knowledgeBase = [], setKnowledgeBase }) {
     }
 
     try {
-      const response = await fetch(`http://localhost:8000/api/inspect/${filename}?limit=10&offset=${newOffset}`)
+      const response = await fetch(`https://zoo-command-center-api.onrender.com/api/inspect/${filename}?limit=10&offset=${newOffset}`)
       const data = await response.json()
       
       setChunks(prev => loadMore ? [...prev, ...data.chunks] : data.chunks)

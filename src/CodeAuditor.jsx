@@ -88,7 +88,7 @@ def process_data(data):
   const runAudit = async () => {
     setIsAuditing(true); setIsEditing(false)
     try {
-      const res = await fetch("http://localhost:8000/api/audit", {
+      const res = await fetch("https://zoo-command-center-api.onrender.com/api/audit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code: codeInput }),

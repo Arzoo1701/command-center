@@ -70,7 +70,7 @@ export default function Analytics() {
     // 2. Fetch Data Function
     const fetchAnalytics = async () => {
       try {
-        const res = await fetch("http://localhost:8000/api/analytics");
+        const res = await fetch("https://zoo-command-center-api.onrender.com/api/analytics");
         if (res.ok) {
           const dbData = await res.json();
           setData(prev => ({

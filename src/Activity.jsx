@@ -10,7 +10,7 @@ export default function ActivityLog() {
     
     const fetchLogs = async () => {
       try {
-        const res = await fetch("http://localhost:8000/api/activity");
+        const res = await fetch("https://zoo-command-center-api.onrender.com/api/activity");
         if (res.ok) {
           const data = await res.json();
           setLogs(data.logs);

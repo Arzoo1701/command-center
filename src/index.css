@@ -1,130 +1,91 @@
 @import "tailwindcss";
-@import "tw-animate-css";
-@import "shadcn/tailwind.css";
-@import "@fontsource-variable/geist";
+@plugin "@tailwindcss/typography";
 
-@custom-variant dark (&:is(.dark *));
-
-@theme inline {
-    --font-heading: var(--font-sans);
-    --font-sans: 'Geist Variable', sans-serif;
-    --color-sidebar-ring: var(--sidebar-ring);
-    --color-sidebar-border: var(--sidebar-border);
-    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-    --color-sidebar-accent: var(--sidebar-accent);
-    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-    --color-sidebar-primary: var(--sidebar-primary);
-    --color-sidebar-foreground: var(--sidebar-foreground);
-    --color-sidebar: var(--sidebar);
-    --color-chart-5: var(--chart-5);
-    --color-chart-4: var(--chart-4);
-    --color-chart-3: var(--chart-3);
-    --color-chart-2: var(--chart-2);
-    --color-chart-1: var(--chart-1);
-    --color-ring: var(--ring);
-    --color-input: var(--input);
-    --color-border: var(--border);
-    --color-destructive: var(--destructive);
-    --color-accent-foreground: var(--accent-foreground);
-    --color-accent: var(--accent);
-    --color-muted-foreground: var(--muted-foreground);
-    --color-muted: var(--muted);
-    --color-secondary-foreground: var(--secondary-foreground);
-    --color-secondary: var(--secondary);
-    --color-primary-foreground: var(--primary-foreground);
-    --color-primary: var(--primary);
-    --color-popover-foreground: var(--popover-foreground);
-    --color-popover: var(--popover);
-    --color-card-foreground: var(--card-foreground);
-    --color-card: var(--card);
-    --color-foreground: var(--foreground);
-    --color-background: var(--background);
-    --radius-sm: calc(var(--radius) * 0.6);
-    --radius-md: calc(var(--radius) * 0.8);
-    --radius-lg: var(--radius);
-    --radius-xl: calc(var(--radius) * 1.4);
-    --radius-2xl: calc(var(--radius) * 1.8);
-    --radius-3xl: calc(var(--radius) * 2.2);
-    --radius-4xl: calc(var(--radius) * 2.6);
-}
-
+/* NEW: Living Cosmic Color Palette and Background */
 :root {
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.145 0 0);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.145 0 0);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
-    --primary: oklch(0.205 0 0);
-    --primary-foreground: oklch(0.985 0 0);
-    --secondary: oklch(0.97 0 0);
-    --secondary-foreground: oklch(0.205 0 0);
-    --muted: oklch(0.97 0 0);
-    --muted-foreground: oklch(0.556 0 0);
-    --accent: oklch(0.97 0 0);
-    --accent-foreground: oklch(0.205 0 0);
-    --destructive: oklch(0.577 0.245 27.325);
-    --border: oklch(0.922 0 0);
-    --input: oklch(0.922 0 0);
-    --ring: oklch(0.708 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --radius: 0.625rem;
-    --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.145 0 0);
-    --sidebar-primary: oklch(0.205 0 0);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.97 0 0);
-    --sidebar-accent-foreground: oklch(0.205 0 0);
-    --sidebar-border: oklch(0.922 0 0);
-    --sidebar-ring: oklch(0.708 0 0);
+  /* Deep Space Colors */
+  --color-cosmos-deep: #020410; /* Near-black deep space */
+  --color-cosmos-mid: #0b0f24;  /* Deep indigo-slate */
+  --color-cosmos-light: #1e1b4b; /* Deep indigo purple */
+  
+  /* Living Energy Colors ("Shiny Colors") */
+  --color-energy-electric: #2563eb; /* Vibrant electric blue */
+  --color-energy-cyan: #06b6d4;      /* Deep, glowing cyan */
+  --color-energy-plasma: #9333ea;    /* Rich cosmic purple */
 }
 
-.dark {
-    --background: oklch(0.145 0 0);
-    --foreground: oklch(0.985 0 0);
-    --card: oklch(0.205 0 0);
-    --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.205 0 0);
-    --popover-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.922 0 0);
-    --primary-foreground: oklch(0.205 0 0);
-    --secondary: oklch(0.269 0 0);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
-    --muted-foreground: oklch(0.708 0 0);
-    --accent: oklch(0.269 0 0);
-    --accent-foreground: oklch(0.985 0 0);
-    --destructive: oklch(0.704 0.191 22.216);
-    --border: oklch(1 0 0 / 10%);
-    --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.556 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --sidebar: oklch(0.205 0 0);
-    --sidebar-foreground: oklch(0.985 0 0);
-    --sidebar-primary: oklch(0.488 0.243 264.376);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.269 0 0);
-    --sidebar-accent-foreground: oklch(0.985 0 0);
-    --sidebar-border: oklch(1 0 0 / 10%);
-    --sidebar-ring: oklch(0.556 0 0);
-}
-
+/* Base Tailwind setup */
 @layer base {
-  * {
-    @apply border-border outline-ring/50;
-    }
   body {
-    @apply bg-background text-foreground;
-    }
-  html {
-    @apply font-sans;
-    }
+    @apply bg-slate-950 font-sans text-slate-200 overflow-hidden;
+  }
+}
+
+/* Dynamic Aurora Background Animation */
+.bg-cosmic-breathing {
+  background: linear-gradient(
+    -45deg, 
+    var(--color-cosmos-deep),
+    var(--color-cosmos-mid),
+    #0a1945, /* An electric deep blue chunk */
+    var(--color-cosmos-light)
+  );
+  background-size: 400% 400%;
+  animation: cosmicBreathe 30s ease infinite; /* Subtle and slow */
+}
+
+@keyframes cosmicBreathe {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* Premium 'Floating Glass' effect */
+.glass-surface {
+  @apply bg-slate-950/40 backdrop-blur-xl border border-white/5;
+}
+
+/* Premium 'Shiny' bubble styles - for use in Chat.jsx */
+.prose-bubble-ai {
+  @apply prose prose-sm prose-invert max-w-none break-words;
+}
+/* Aurora Gradient Animation */
+/* Aurora Gradient Animation - UPGRADED for higher contrast and brightness */
+.aurora-overlay {
+  background: linear-gradient(
+    -45deg,
+    #000000,       /* Pitch Black */
+    #4c1d95,       /* Deep Purple */
+    #06b6d4,       /* Bright Cyan */
+    #f472b6,       /* Bright Pink */
+    #0f172a        /* Dark Slate */
+  );
+  background-size: 300% 300%;
+  animation: gradientMove 15s ease infinite;
+}
+
+@keyframes gradientMove {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* Bulletproof CSS Floating Dust (Replaces the broken particles) */
+.css-dust {
+  background-image:
+    radial-gradient(1.5px 1.5px at 20px 30px, #ffffff, rgba(0,0,0,0)),
+    radial-gradient(2px 2px at 80px 70px, #ffffff, rgba(0,0,0,0)),
+    radial-gradient(1px 1px at 150px 160px, #ffffff, rgba(0,0,0,0)),
+    radial-gradient(1.5px 1.5px at 290px 40px, #ffffff, rgba(0,0,0,0)),
+    radial-gradient(2.5px 2.5px at 330px 180px, #ffffff, rgba(0,0,0,0)),
+    radial-gradient(1px 1px at 460px 120px, #ffffff, rgba(0,0,0,0));
+  background-repeat: repeat;
+  background-size: 500px 500px;
+  animation: floatDust 20s linear infinite;
+  opacity: 0.5;
+}
+
+@keyframes floatDust {
+  from { transform: translateY(0px); }
+  to { transform: translateY(-500px); }
 }

@@ -119,7 +119,7 @@ model = genai.GenerativeModel('gemini-2.5-flash')
 # ✅ Google embeddings instead of HuggingFace (no model download needed)
 print("Initializing Google Embeddings...")
 embeddings = GoogleGenerativeAIEmbeddings(
-    model="models/embedding-001",
+    model="models/text-embedding-004",
     google_api_key=GOOGLE_API_KEY
 )
 

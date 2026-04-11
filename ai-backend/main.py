@@ -10,25 +10,25 @@ import shutil
 import json
 import google.generativeai as genai
 from datetime import datetime
- 
+
 # ✅ Lightweight imports
 from langchain_community.document_loaders import PyPDFLoader, TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_community.vectorstores import FAISS
- 
+
 # DATABASE Imports
 from sqlalchemy import create_engine, Column, Integer, String, text
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
- 
+
 from dotenv import load_dotenv
 load_dotenv()
- 
+
 # ==========================================
 # 🚀 INITIALIZE APP
 # ==========================================
 app = FastAPI(title="AI Command Center Backend")
- 
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -36,7 +36,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
- 
+
 # ==========================================
 # 💾 1. DATABASE SETUP: USER PROGRESS & LOGS
 # ==========================================
@@ -44,30 +44,30 @@ SQLALCHEMY_DATABASE_URL = "sqlite:///./command_center.db"
 engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
- 
+
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True)
     streak = Column(Integer, default=0)
     solved_count = Column(Integer, default=0)
- 
+
 class ActivityLog(Base):
     __tablename__ = "activity_logs"
     id = Column(Integer, primary_key=True, index=True)
     tool = Column(String, index=True)
     action = Column(String)
     timestamp = Column(String, default=lambda: datetime.now().isoformat())
- 
+
 Base.metadata.create_all(bind=engine)
- 
+
 def get_db():
     db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
- 
+
 def log_action(db: Session, tool: str, action: str):
     try:
         log = ActivityLog(tool=tool, action=action)
@@ -75,13 +75,13 @@ def log_action(db: Session, tool: str, action: str):
         db.commit()
     except Exception as e:
         print(f"Logging failed: {e}")
- 
+
 # ==========================================
 # 🗄️ 2. DATABASE SETUP: SQL SANDBOX
 # ==========================================
 SANDBOX_DB_URL = "sqlite:///./sandbox.db"
 sandbox_engine = create_engine(SANDBOX_DB_URL, connect_args={"check_same_thread": False})
- 
+
 with sandbox_engine.connect() as conn:
     conn.execute(text("""
         CREATE TABLE IF NOT EXISTS employees (
@@ -103,28 +103,28 @@ with sandbox_engine.connect() as conn:
             ('Evan', 'Sales', 90000, '2021-08-19')
         """))
         conn.commit()
- 
+
 # ==========================================
 # 🤖 3. AI SETUP
 # ==========================================
 GOOGLE_API_KEY = os.getenv("GEMINI_API_KEY")
 if not GOOGLE_API_KEY:
     raise ValueError("GEMINI_API_KEY environment variable not set!")
- 
+
 genai.configure(api_key=GOOGLE_API_KEY)
 model = genai.GenerativeModel('gemini-2.5-flash')
- 
+
 # ✅ Embeddings object created but NOT called at startup
 embeddings = GoogleGenerativeAIEmbeddings(
     model="models/text-embedding-004",
     google_api_key=GOOGLE_API_KEY
 )
- 
+
 FAISS_INDEX_PATH = "./faiss_index"
- 
+
 # ✅ LAZY init — no embedding call happens until a doc is uploaded
 vector_store = None
- 
+
 def get_vector_store():
     global vector_store
     if vector_store is not None:
@@ -137,9 +137,9 @@ def get_vector_store():
             allow_dangerous_deserialization=True
         )
     return vector_store
- 
+
 os.makedirs("temp_uploads", exist_ok=True)
- 
+
 # ==========================================
 # 📦 4. DATA MODELS
 # ==========================================
@@ -153,7 +153,7 @@ class ExecuteRequest(BaseModel):
     problem_id: int
 class SQLRequest(BaseModel):
     query: str
- 
+
 # ==========================================
 # 🧪 5. TEST REGISTRY
 # ==========================================
@@ -163,27 +163,27 @@ TEST_REGISTRY = {
         2: """\nprint('\\n[System] Running Python Test Cases...')\ntry:\n    if 'lengthOfLongestSubstring' in globals():\n        res = lengthOfLongestSubstring("abcabcbb")\n        if res == 3: print('[PASS] LongestSubstring Test Passed!')\n        else: print(f'[FAIL] Expected 3 but got {res}')\n    else: print('[ERROR] Function not found.')\nexcept Exception as e: print(f'[ERROR] {e}')"""
     }
 }
- 
+
 # ==========================================
 # 🚀 6. API ENDPOINTS
 # ==========================================
- 
+
 @app.get("/")
 def read_root():
     return {"status": "System Online", "message": "Backend engine is running securely."}
- 
+
 @app.get("/api/analytics")
 async def get_analytics(db: Session = Depends(get_db)):
     try:
         total_queries = db.query(ActivityLog).count()
         recent_logs = db.query(ActivityLog).order_by(ActivityLog.id.desc()).limit(5).all()
- 
+
         color_map = {
             "AI Assistant": "#a78bfa", "Documents": "#22d3ee",
             "Code Auditor": "#fb923c", "Schema": "#f472b6",
             "Interview Prep": "#c8f04a"
         }
- 
+
         recent_activity = []
         for log in recent_logs:
             recent_activity.append({
@@ -192,7 +192,7 @@ async def get_analytics(db: Session = Depends(get_db)):
                 "time": "Just now",
                 "color": color_map.get(log.tool, "#64748b")
             })
- 
+
         base_traffic = max(total_queries, 10)
         chart_data = [
             {"name": "Mon", "queries": int(base_traffic * 0.4)},
@@ -203,7 +203,7 @@ async def get_analytics(db: Session = Depends(get_db)):
             {"name": "Sat", "queries": int(base_traffic * 1.2)},
             {"name": "Sun", "queries": total_queries},
         ]
- 
+
         return {
             "stats": [
                 {"label": "TOTAL QUERIES", "value": str(total_queries), "trend": "↑ Live Data", "color": "#22c55e"},
@@ -216,7 +216,7 @@ async def get_analytics(db: Session = Depends(get_db)):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
- 
+
 @app.get("/api/activity")
 async def get_full_activity_log(limit: int = 100, db: Session = Depends(get_db)):
     try:
@@ -243,7 +243,7 @@ async def get_full_activity_log(limit: int = 100, db: Session = Depends(get_db))
         return {"logs": results}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
- 
+
 @app.get("/api/progress")
 async def get_user_progress(db: Session = Depends(get_db)):
     try:
@@ -256,7 +256,7 @@ async def get_user_progress(db: Session = Depends(get_db)):
         return {"username": user.username, "streak": user.streak, "solved": user.solved_count, "total": 6}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
- 
+
 @app.post("/api/progress/solve")
 async def increment_solved_score(db: Session = Depends(get_db)):
     try:
@@ -269,7 +269,7 @@ async def increment_solved_score(db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="User not found")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
- 
+
 @app.post("/api/sql")
 async def execute_sql(request: SQLRequest):
     try:
@@ -283,38 +283,38 @@ async def execute_sql(request: SQLRequest):
             return {"columns": columns, "rows": rows}
     except Exception as e:
         return {"error": str(e)}
- 
+
 @app.post("/api/execute")
 async def execute_code(request: ExecuteRequest, db: Session = Depends(get_db)):
     log_action(db, "Interview Prep", f"Ran {request.language} code")
     try:
         final_code = request.code
         lang = request.language.lower()
- 
+
         if lang == "python":
             if lang in TEST_REGISTRY and request.problem_id in TEST_REGISTRY[lang]:
                 final_code += TEST_REGISTRY[lang][request.problem_id]
             else:
                 final_code += f"\nprint('\\n[System] No hidden test cases configured for Problem {request.problem_id} yet.')"
- 
+
             with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False, encoding="utf-8") as f:
                 f.write(final_code)
                 temp_filename = f.name
- 
+
             try:
                 result = subprocess.run([sys.executable, temp_filename], capture_output=True, text=True, encoding="utf-8", timeout=3)
                 output = result.stdout + result.stderr
             finally:
                 if os.path.exists(temp_filename): os.remove(temp_filename)
- 
+
             return {"output": output if output else "(Process exited successfully with no output)"}
- 
+
         elif lang == "cpp":
             with tempfile.NamedTemporaryFile(mode="w", suffix=".cpp", delete=False, encoding="utf-8") as f:
                 f.write(final_code)
                 cpp_filename = f.name
                 exe_filename = cpp_filename.replace(".cpp", ".exe")
- 
+
             try:
                 compile_result = subprocess.run(["g++", cpp_filename, "-o", exe_filename], capture_output=True, text=True, encoding="utf-8")
                 if compile_result.returncode != 0:
@@ -325,7 +325,7 @@ async def execute_code(request: ExecuteRequest, db: Session = Depends(get_db)):
             finally:
                 if os.path.exists(cpp_filename): os.remove(cpp_filename)
                 if os.path.exists(exe_filename): os.remove(exe_filename)
- 
+
         elif lang == "java":
             temp_dir = tempfile.mkdtemp()
             java_filename = os.path.join(temp_dir, "Main.java")
@@ -342,12 +342,12 @@ async def execute_code(request: ExecuteRequest, db: Session = Depends(get_db)):
                 shutil.rmtree(temp_dir, ignore_errors=True)
         else:
             return {"output": f"🚨 Language '{lang}' is not supported."}
- 
+
     except subprocess.TimeoutExpired:
         return {"output": "🚨 ERROR: Execution timed out (infinite loop detected)."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
- 
+
 @app.post("/api/upload")
 async def upload_document(file: UploadFile = File(...), db: Session = Depends(get_db)):
     global vector_store
@@ -356,7 +356,7 @@ async def upload_document(file: UploadFile = File(...), db: Session = Depends(ge
         file_path = f"temp_uploads/{file.filename}"
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
- 
+
         if file.filename.endswith(".pdf"):
             loader = PyPDFLoader(file_path)
         elif file.filename.endswith(".txt") or file.filename.endswith(".md"):
@@ -364,24 +364,24 @@ async def upload_document(file: UploadFile = File(...), db: Session = Depends(ge
         else:
             os.remove(file_path)
             raise HTTPException(status_code=400, detail="Unsupported file type.")
- 
+
         documents = loader.load()
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
         chunks = text_splitter.split_documents(documents)
- 
+
         # ✅ Create FAISS index on first upload, add to it after
         if vector_store is None:
             vector_store = FAISS.from_documents(chunks, embedding=embeddings)
         else:
             vector_store.add_documents(chunks)
- 
+
         vector_store.save_local(FAISS_INDEX_PATH)
         os.remove(file_path)
- 
+
         return {"filename": file.filename, "status": "Vectorized and stored in FAISS", "chunks_created": len(chunks)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
- 
+
 @app.get("/api/inspect/{filename}")
 async def inspect_chunks(filename: str, limit: int = 10, offset: int = 0):
     return {
@@ -390,22 +390,27 @@ async def inspect_chunks(filename: str, limit: int = 10, offset: int = 0):
         "chunks": [],
         "total_chunks": 0
     }
- 
+
 @app.post("/api/chat")
 async def chat_with_pdf(request: ChatRequest, db: Session = Depends(get_db)):
     log_action(db, "AI Assistant", "1 query")
     try:
         vs = get_vector_store()
-        if not vs:
-            return {"response": "No documents uploaded yet. Please upload a file first.", "sources": []}
-        docs = vs.similarity_search(request.message, k=3)
-        context_text = "\n\n".join([doc.page_content for doc in docs])
-        prompt = f"Use this context to answer the user: {context_text}\nUser Question: {request.message}"
+
+        if vs:
+            # Has documents — use RAG
+            docs = vs.similarity_search(request.message, k=3)
+            context_text = "\n\n".join([doc.page_content for doc in docs])
+            prompt = f"Use this context to answer:\n{context_text}\n\nQuestion: {request.message}"
+        else:
+            # No documents — answer directly with Gemini ✅
+            prompt = request.message
+
         response = model.generate_content(prompt)
-        return {"response": response.text, "sources": [doc.metadata.get("source") for doc in docs]}
+        return {"response": response.text, "sources": []}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
- 
+
 @app.post("/api/audit")
 async def audit_code(request: AuditRequest, db: Session = Depends(get_db)):
     log_action(db, "Code Auditor", "Code scanned")
@@ -416,7 +421,7 @@ async def audit_code(request: AuditRequest, db: Session = Depends(get_db)):
         return json.loads(cleaned)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
- 
+
 @app.post("/api/schema")
 async def design_schema(request: SchemaRequest, db: Session = Depends(get_db)):
     log_action(db, "Schema", "Generated new schema")
@@ -425,7 +430,7 @@ async def design_schema(request: SchemaRequest, db: Session = Depends(get_db)):
         return {"response": response.text}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
- 
+
 @app.post("/api/flashcards")
 async def generate_flashcards(request: FlashcardRequest, db: Session = Depends(get_db)):
     log_action(db, "Interview Prep", f"Generated flashcards for {request.topic[:10]}...")
@@ -436,7 +441,6 @@ async def generate_flashcards(request: FlashcardRequest, db: Session = Depends(g
         return {"response": clean_json}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
- 
+
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
- 

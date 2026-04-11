@@ -11,13 +11,11 @@ import json
 import google.generativeai as genai
 from datetime import datetime
 
-# ✅ Lightweight imports
+# Document loading only — no embeddings needed!
 from langchain_community.document_loaders import PyPDFLoader, TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from langchain_community.vectorstores import FAISS
 
-# DATABASE Imports
+# Database
 from sqlalchemy import create_engine, Column, Integer, String, text
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 
@@ -38,7 +36,13 @@ app.add_middleware(
 )
 
 # ==========================================
-# 💾 1. DATABASE SETUP: USER PROGRESS & LOGS
+# ✅ IN-MEMORY DOCUMENT STORE
+# Gemini's huge context window = no embeddings needed!
+# ==========================================
+document_store = {}  # { filename: "full text content" }
+
+# ==========================================
+# 💾 DATABASE SETUP
 # ==========================================
 SQLALCHEMY_DATABASE_URL = "sqlite:///./command_center.db"
 engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
@@ -77,7 +81,7 @@ def log_action(db: Session, tool: str, action: str):
         print(f"Logging failed: {e}")
 
 # ==========================================
-# 🗄️ 2. DATABASE SETUP: SQL SANDBOX
+# 🗄️ SQL SANDBOX
 # ==========================================
 SANDBOX_DB_URL = "sqlite:///./sandbox.db"
 sandbox_engine = create_engine(SANDBOX_DB_URL, connect_args={"check_same_thread": False})
@@ -85,11 +89,8 @@ sandbox_engine = create_engine(SANDBOX_DB_URL, connect_args={"check_same_thread"
 with sandbox_engine.connect() as conn:
     conn.execute(text("""
         CREATE TABLE IF NOT EXISTS employees (
-            id INTEGER PRIMARY KEY,
-            name TEXT,
-            department TEXT,
-            salary INTEGER,
-            hire_date TEXT
+            id INTEGER PRIMARY KEY, name TEXT,
+            department TEXT, salary INTEGER, hire_date TEXT
         )
     """))
     result = conn.execute(text("SELECT COUNT(*) FROM employees")).scalar()
@@ -105,43 +106,20 @@ with sandbox_engine.connect() as conn:
         conn.commit()
 
 # ==========================================
-# 🤖 3. AI SETUP
+# 🤖 AI SETUP
 # ==========================================
-GOOGLE_API_KEY = os.getenv("GEMINI_API_KEY")
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 if not GOOGLE_API_KEY:
-    raise ValueError("GEMINI_API_KEY environment variable not set!")
+    raise ValueError("GOOGLE_API_KEY environment variable not set!")
 
 genai.configure(api_key=GOOGLE_API_KEY)
 model = genai.GenerativeModel('gemini-2.5-flash')
 
-# ✅ Embeddings object created but NOT called at startup
-embeddings = GoogleGenerativeAIEmbeddings(
-    model="models/text-embedding-004",
-    google_api_key=GOOGLE_API_KEY
-)
-
-FAISS_INDEX_PATH = "./faiss_index"
-
-# ✅ LAZY init — no embedding call happens until a doc is uploaded
-vector_store = None
-
-def get_vector_store():
-    global vector_store
-    if vector_store is not None:
-        return vector_store
-    if os.path.exists(FAISS_INDEX_PATH):
-        print("Loading existing FAISS index from disk...")
-        vector_store = FAISS.load_local(
-            FAISS_INDEX_PATH,
-            embeddings,
-            allow_dangerous_deserialization=True
-        )
-    return vector_store
-
 os.makedirs("temp_uploads", exist_ok=True)
+print("✅ AI Command Center started — no embeddings needed!")
 
 # ==========================================
-# 📦 4. DATA MODELS
+# 📦 DATA MODELS
 # ==========================================
 class ChatRequest(BaseModel): message: str
 class AuditRequest(BaseModel): code: str
@@ -155,7 +133,7 @@ class SQLRequest(BaseModel):
     query: str
 
 # ==========================================
-# 🧪 5. TEST REGISTRY
+# 🧪 TEST REGISTRY
 # ==========================================
 TEST_REGISTRY = {
     "python": {
@@ -165,34 +143,126 @@ TEST_REGISTRY = {
 }
 
 # ==========================================
-# 🚀 6. API ENDPOINTS
+# 🚀 API ENDPOINTS
 # ==========================================
 
 @app.get("/")
 def read_root():
     return {"status": "System Online", "message": "Backend engine is running securely."}
 
+# ✅ UPLOAD — stores text in memory, no embeddings!
+@app.post("/api/upload")
+async def upload_document(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    log_action(db, "Documents", f"Uploaded {file.filename}")
+    try:
+        file_path = f"temp_uploads/{file.filename}"
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        if file.filename.endswith(".pdf"):
+            loader = PyPDFLoader(file_path)
+        elif file.filename.endswith(".txt") or file.filename.endswith(".md"):
+            loader = TextLoader(file_path)
+        else:
+            os.remove(file_path)
+            raise HTTPException(status_code=400, detail="Unsupported file type. Use PDF, TXT, or MD.")
+
+        documents = loader.load()
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=2000, chunk_overlap=200)
+        chunks = text_splitter.split_documents(documents)
+
+        # ✅ Just store the text — no API call to Google needed!
+        full_text = "\n\n".join([chunk.page_content for chunk in chunks])
+        document_store[file.filename] = full_text
+
+        if os.path.exists(file_path):
+            os.remove(file_path)
+
+        print(f"✅ Stored '{file.filename}' — {len(chunks)} chunks, {len(full_text)} chars")
+
+        return {
+            "filename": file.filename,
+            "status": "Stored in memory",
+            "chunks_created": len(chunks)
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Upload error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ✅ CHAT — passes document text directly to Gemini
+@app.post("/api/chat")
+async def chat_with_pdf(request: ChatRequest, db: Session = Depends(get_db)):
+    log_action(db, "AI Assistant", "1 query")
+    try:
+        if document_store:
+            combined = "\n\n---\n\n".join([
+                f"[Document: {name}]\n{content[:8000]}"
+                for name, content in document_store.items()
+            ])[:30000]
+
+            prompt = f"""You are a helpful AI assistant with access to uploaded documents.
+Use the documents below to answer the question. If the answer isn't in the documents, use your own knowledge.
+
+DOCUMENTS:
+{combined}
+
+USER QUESTION: {request.message}"""
+        else:
+            prompt = request.message
+
+        response = model.generate_content(prompt)
+        return {
+            "response": response.text,
+            "sources": list(document_store.keys())
+        }
+    except Exception as e:
+        print(f"❌ Chat error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/documents")
+async def list_documents():
+    return {
+        "documents": [
+            {"filename": name, "chars": len(text), "status": "In Memory"}
+            for name, text in document_store.items()
+        ],
+        "total": len(document_store)
+    }
+
+@app.get("/api/inspect/{filename}")
+async def inspect_chunks(filename: str, limit: int = 10, offset: int = 0):
+    if filename not in document_store:
+        return {"filename": filename, "chunks": [], "total_chunks": 0, "has_more": False,
+                "message": "File not in memory. Please re-upload."}
+    content = document_store[filename]
+    chunk_size = 500
+    start = offset * chunk_size
+    end = start + (limit * chunk_size)
+    preview = content[start:end]
+    return {
+        "filename": filename,
+        "chunks": [preview] if preview else [],
+        "total_chunks": max(1, len(content) // chunk_size),
+        "has_more": end < len(content)
+    }
+
 @app.get("/api/analytics")
 async def get_analytics(db: Session = Depends(get_db)):
     try:
         total_queries = db.query(ActivityLog).count()
         recent_logs = db.query(ActivityLog).order_by(ActivityLog.id.desc()).limit(5).all()
-
         color_map = {
             "AI Assistant": "#a78bfa", "Documents": "#22d3ee",
             "Code Auditor": "#fb923c", "Schema": "#f472b6",
             "Interview Prep": "#c8f04a"
         }
-
-        recent_activity = []
-        for log in recent_logs:
-            recent_activity.append({
-                "tool": log.tool,
-                "action": log.action,
-                "time": "Just now",
-                "color": color_map.get(log.tool, "#64748b")
-            })
-
+        recent_activity = [
+            {"tool": l.tool, "action": l.action, "time": "Just now",
+             "color": color_map.get(l.tool, "#64748b")}
+            for l in recent_logs
+        ]
         base_traffic = max(total_queries, 10)
         chart_data = [
             {"name": "Mon", "queries": int(base_traffic * 0.4)},
@@ -203,11 +273,10 @@ async def get_analytics(db: Session = Depends(get_db)):
             {"name": "Sat", "queries": int(base_traffic * 1.2)},
             {"name": "Sun", "queries": total_queries},
         ]
-
         return {
             "stats": [
                 {"label": "TOTAL QUERIES", "value": str(total_queries), "trend": "↑ Live Data", "color": "#22c55e"},
-                {"label": "DOCS PROCESSED", "value": "143", "trend": "↑ 8 new today", "color": "#22d3ee"},
+                {"label": "DOCS IN MEMORY", "value": str(len(document_store)), "trend": "↑ Session", "color": "#22d3ee"},
                 {"label": "AVG RESPONSE", "value": "1.3s", "trend": "↑ faster than avg", "color": "#22c55e"},
                 {"label": "SESSIONS", "value": "38", "trend": "↓ 2 vs last week", "color": "#f43f5e"}
             ],
@@ -234,11 +303,8 @@ async def get_full_activity_log(limit: int = 100, db: Session = Depends(get_db))
             except:
                 time_str = log.timestamp
             results.append({
-                "id": log.id,
-                "tool": log.tool,
-                "action": log.action,
-                "time": time_str,
-                "color": color_map.get(log.tool, "#64748b")
+                "id": log.id, "tool": log.tool, "action": log.action,
+                "time": time_str, "color": color_map.get(log.tool, "#64748b")
             })
         return {"logs": results}
     except Exception as e:
@@ -277,7 +343,7 @@ async def execute_sql(request: SQLRequest):
             result = conn.execute(text(request.query))
             if request.query.strip().upper().startswith(("INSERT", "UPDATE", "DELETE", "CREATE", "DROP")):
                 conn.commit()
-                return {"columns": ["Status"], "rows": [[f"Query executed successfully. Rows affected: {result.rowcount}"]]}
+                return {"columns": ["Status"], "rows": [[f"Query executed. Rows affected: {result.rowcount}"]]}
             columns = list(result.keys())
             rows = [list(row) for row in result.fetchall()]
             return {"columns": columns, "rows": rows}
@@ -295,33 +361,28 @@ async def execute_code(request: ExecuteRequest, db: Session = Depends(get_db)):
             if lang in TEST_REGISTRY and request.problem_id in TEST_REGISTRY[lang]:
                 final_code += TEST_REGISTRY[lang][request.problem_id]
             else:
-                final_code += f"\nprint('\\n[System] No hidden test cases configured for Problem {request.problem_id} yet.')"
-
+                final_code += f"\nprint('\\n[System] No test cases for Problem {request.problem_id} yet.')"
             with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False, encoding="utf-8") as f:
                 f.write(final_code)
                 temp_filename = f.name
-
             try:
                 result = subprocess.run([sys.executable, temp_filename], capture_output=True, text=True, encoding="utf-8", timeout=3)
                 output = result.stdout + result.stderr
             finally:
                 if os.path.exists(temp_filename): os.remove(temp_filename)
-
-            return {"output": output if output else "(Process exited successfully with no output)"}
+            return {"output": output if output else "(No output)"}
 
         elif lang == "cpp":
             with tempfile.NamedTemporaryFile(mode="w", suffix=".cpp", delete=False, encoding="utf-8") as f:
                 f.write(final_code)
                 cpp_filename = f.name
                 exe_filename = cpp_filename.replace(".cpp", ".exe")
-
             try:
                 compile_result = subprocess.run(["g++", cpp_filename, "-o", exe_filename], capture_output=True, text=True, encoding="utf-8")
                 if compile_result.returncode != 0:
                     return {"output": f"🚨 COMPILATION ERROR:\n{compile_result.stderr}"}
                 run_result = subprocess.run([exe_filename], capture_output=True, text=True, encoding="utf-8", timeout=3)
-                output = run_result.stdout + run_result.stderr
-                return {"output": output if output else "(Process exited successfully with no output)"}
+                return {"output": run_result.stdout + run_result.stderr or "(No output)"}
             finally:
                 if os.path.exists(cpp_filename): os.remove(cpp_filename)
                 if os.path.exists(exe_filename): os.remove(exe_filename)
@@ -336,78 +397,14 @@ async def execute_code(request: ExecuteRequest, db: Session = Depends(get_db)):
                 if compile_result.returncode != 0:
                     return {"output": f"🚨 COMPILATION ERROR:\n{compile_result.stderr}"}
                 run_result = subprocess.run(["java", "Main"], cwd=temp_dir, capture_output=True, text=True, encoding="utf-8", timeout=3)
-                output = run_result.stdout + run_result.stderr
-                return {"output": output if output else "(Process exited successfully with no output)"}
+                return {"output": run_result.stdout + run_result.stderr or "(No output)"}
             finally:
                 shutil.rmtree(temp_dir, ignore_errors=True)
         else:
-            return {"output": f"🚨 Language '{lang}' is not supported."}
+            return {"output": f"🚨 Language '{lang}' not supported."}
 
     except subprocess.TimeoutExpired:
-        return {"output": "🚨 ERROR: Execution timed out (infinite loop detected)."}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/upload")
-async def upload_document(file: UploadFile = File(...), db: Session = Depends(get_db)):
-    global vector_store
-    log_action(db, "Documents", f"Uploaded {file.filename}")
-    try:
-        file_path = f"temp_uploads/{file.filename}"
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-
-        if file.filename.endswith(".pdf"):
-            loader = PyPDFLoader(file_path)
-        elif file.filename.endswith(".txt") or file.filename.endswith(".md"):
-            loader = TextLoader(file_path)
-        else:
-            os.remove(file_path)
-            raise HTTPException(status_code=400, detail="Unsupported file type.")
-
-        documents = loader.load()
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-        chunks = text_splitter.split_documents(documents)
-
-        # ✅ Create FAISS index on first upload, add to it after
-        if vector_store is None:
-            vector_store = FAISS.from_documents(chunks, embedding=embeddings)
-        else:
-            vector_store.add_documents(chunks)
-
-        vector_store.save_local(FAISS_INDEX_PATH)
-        os.remove(file_path)
-
-        return {"filename": file.filename, "status": "Vectorized and stored in FAISS", "chunks_created": len(chunks)}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/inspect/{filename}")
-async def inspect_chunks(filename: str, limit: int = 10, offset: int = 0):
-    return {
-        "filename": filename,
-        "message": "Chunk inspection is not supported with FAISS. Use /api/chat to query your documents.",
-        "chunks": [],
-        "total_chunks": 0
-    }
-
-@app.post("/api/chat")
-async def chat_with_pdf(request: ChatRequest, db: Session = Depends(get_db)):
-    log_action(db, "AI Assistant", "1 query")
-    try:
-        vs = get_vector_store()
-
-        if vs:
-            # Has documents — use RAG
-            docs = vs.similarity_search(request.message, k=3)
-            context_text = "\n\n".join([doc.page_content for doc in docs])
-            prompt = f"Use this context to answer:\n{context_text}\n\nQuestion: {request.message}"
-        else:
-            # No documents — answer directly with Gemini ✅
-            prompt = request.message
-
-        response = model.generate_content(prompt)
-        return {"response": response.text, "sources": []}
+        return {"output": "🚨 Execution timed out (infinite loop detected)."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
